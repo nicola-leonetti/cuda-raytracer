@@ -1,0 +1,6 @@
+*.ppm
+main
+
+.DS_Store
+
+.vscode
