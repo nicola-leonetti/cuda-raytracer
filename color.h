@@ -35,8 +35,7 @@ void color_print(t_color c) {
             (int) (255.999 * c.z));
 }
 
-// Prints the color to stdout in PPM format
-void color_print_PPM(t_color c) {
+void color_write_at(t_color c, long offset, unsigned char *addr) {
     // Clamp color RGB components to interval [0, 0.999]
     c.x = (c.x > 0.999) ? 0.999 : c.x;
     c.y = (c.y > 0.999) ? 0.999 : c.y;
@@ -44,15 +43,14 @@ void color_print_PPM(t_color c) {
     c.x = (c.x < 0) ? 0 : c.x;
     c.y = (c.y < 0) ? 0 : c.y;
     c.z = (c.z < 0) ? 0 : c.z;
+     
+    float r = TO_GAMMA(c.x);
+    float g = TO_GAMMA(c.y);
+    float b = TO_GAMMA(c.z);
 
-    my_decimal r = TO_GAMMA(c.x);
-    my_decimal g = TO_GAMMA(c.y);
-    my_decimal b = TO_GAMMA(c.z);
-
-    printf("%d %d %d\n", 
-            (int) (255.999 * r), 
-            (int) (255.999 * g), 
-            (int) (255.999 * b));
+    addr[offset] = (unsigned int) (255.999 * r);
+    addr[offset+1] = (unsigned int) (255.999 * g);
+    addr[offset+2] = (unsigned int) (255.999 * b);
 }
 
 #endif 

@@ -21,8 +21,7 @@ t_sphere sphere_new(t_point3 center, my_decimal radius, t_material material) {
 // Returns hit point and normal vector of a ray with a sphere.
 // For the details of how this calculation is performed, refer to the sources 
 // in README.md
-t_hit_result sphere_hit(t_ray *r, t_sphere s, my_decimal t_min, my_decimal t_max) {
-    t_hit_result result;
+void sphere_hit(t_hit_result *result, t_ray *r, t_sphere s, my_decimal t_min, my_decimal t_max) {
 
     t_vec3 oc = subtract(s.center, r->origin);
 
@@ -33,8 +32,8 @@ t_hit_result sphere_hit(t_ray *r, t_sphere s, my_decimal t_min, my_decimal t_max
 
     // discriminant < 0 -> no real solutions -> no intersections
     if (discriminant < 0) {
-        result.did_hit = false;
-        return result;
+        result->did_hit = false;
+        return;
     }
 
     // Check for each of the intersections if it lies in the acceptable range
@@ -46,37 +45,35 @@ t_hit_result sphere_hit(t_ray *r, t_sphere s, my_decimal t_min, my_decimal t_max
         root = (h + sqrt(discriminant)) / a;
         // None of the two roots is in the acceptable range (t_min, t_max)
         if (root <= t_min || root >= t_max) {
-            result.did_hit = false;
-            return result;
+            result->did_hit = false;
+            return;
         }
     }
 
     // Calculate intersection
-    result.did_hit = true;
-    result.t = root;
-    result.p = ray_at(*r, result.t);
+    result->did_hit = true;
+    result->t = root;
+    ray_at(&(result->p), *r, result->t);
 
     // Calculating the normal vector with this formula, it always points
     // outwards
-    result.normal = divide(subtract(result.p, s.center), s.radius);
+    result->normal = divide(subtract(result->p, s.center), s.radius);
 
     // In order to calculate wether we hit an inside or ourside face, we can 
     // compute the dot product with the (OUTSIDE-POINTING!!!) normal
-    result.front_face = (dot(r->direction, result.normal) < 0);
+    result->front_face = (dot(r->direction, result->normal) < 0);
 
-    // TODO switch to just memorizing the sphere object
-    result.albedo = s.material.albedo;
-    result.surface_material = s.material.type;
-    result.fuzz = s.material.fuzz;
-    result.refraction_index = s.material.refraction_index;
+    // TOTO switch to just memorizing the sphere object
+    result->albedo = s.material.albedo;
+    result->surface_material = s.material.type;
+    result->fuzz = s.material.fuzz;
+    result->refraction_index = s.material.refraction_index;
 
     // If the ray hits an object from inside (like in dielectrics, I need to 
     // invert the direction of the normal
-    if (!result.front_face) {
-        result.normal = scale(result.normal, -1);
+    if (!result->front_face) {
+        result->normal = scale(result->normal, -1);
     }
-
-    return result;
 }
 
 #endif 

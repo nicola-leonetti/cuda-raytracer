@@ -9,6 +9,12 @@
 #define NUMBER_OF_SPHERES 489
 t_sphere world[NUMBER_OF_SPHERES];
 
+double cpuSecond() {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return ((double) ts.tv_sec + (double) ts.tv_nsec * 1.e-9);
+}
+
 void init_world(t_sphere *world) {
     // Ground sphere (Lambertian material)
     world[0] = sphere_new(
@@ -54,6 +60,14 @@ void init_world(t_sphere *world) {
 
 }
 
+void write_PPM_img_to_stdout(unsigned char *img, int width, int height) {
+    // PPM header
+    printf("P3\n%d %d\n255\n", width, height);
+    for (int pixel = 0; pixel < width*height*3; pixel+=3) {
+        printf("%d %d %d\n", img[pixel], img[pixel+1], img[pixel+2]);
+    }
+}
+
 int main() {
     // Initialize RNG
     srand((unsigned int) time(NULL));
@@ -63,7 +77,7 @@ int main() {
     fprintf(stderr, "\r                            \r");
     fprintf(stderr, "Sfere inizializzate\n");
 
-    clock_t start = clock();
+    double start = cpuSecond();
 
     t_camera cam = camera_new(ASPECT_RATIO, 
                               VIEWPORT_WIDTH, 
@@ -72,9 +86,16 @@ int main() {
                               (t_point3) LOOK_AT,
                               DEFOCUS_ANGLE,
                               FOCUS_DISTANCE);
-    camera_render(&cam, world, NUMBER_OF_SPHERES);
 
-    clock_t end  = clock();
-    double elapsed_time = ((double)(end - start)) / CLOCKS_PER_SEC;
-    fprintf(stderr, "Elapsed time: %.6fs\n", elapsed_time);
+    // Allocating the necessary memory on the heap for the image
+    unsigned char *result_img = (unsigned char*) \
+        malloc(cam.image_height*cam.image_width*sizeof(unsigned char) * 3);
+    
+    camera_render(&cam, world, NUMBER_OF_SPHERES, result_img);
+
+    double end  = cpuSecond();
+    fprintf(stderr, "Elapsed time: %.6fs\n", end - start);
+
+    write_PPM_img_to_stdout(result_img, cam.image_width, cam.image_height);
+    free(result_img);
 }

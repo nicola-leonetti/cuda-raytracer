@@ -21,8 +21,8 @@ t_ray ray_new(const t_point3 origin, const t_vec3 direction) {
 }
 
 // Function to get the point at a given time t along the ray
-t_point3 ray_at(const t_ray r, my_decimal t) {
-    return sum(r.origin, scale(r.direction, t));
+void ray_at(t_point3 *point,const t_ray r, my_decimal t) {
+    *point = sum(r.origin, scale(r.direction, t));
 }
 
 void ray_print(t_ray r) {
@@ -34,15 +34,13 @@ void ray_print(t_ray r) {
 }
 
 // Scatters the incident ray based on the material hit
-bool scatter(t_hit_result *hit_result,
+void scatter(t_hit_result *hit_result,
              t_ray *ray_in, 
              t_color *attenuation, 
              t_ray *ray_scattered) {
 
-    // Declare variables beforehand to stop CUDA from complaining about them 
-    // being initialized in every branch of the switch statement
     t_vec3 scatter_direction;
-    my_decimal refraction_index, cos_theta, sin_theta;
+    my_decimal cos_theta, sin_theta, refraction_index;
     bool cannot_refract;
     switch (hit_result->surface_material) {
 
@@ -70,11 +68,11 @@ bool scatter(t_hit_result *hit_result,
             // Reflectivity varying based on the angle is given by Shlick's 
             // Approximation
             cannot_refract = ((refraction_index*sin_theta) > 1.0);
-                scatter_direction = (cannot_refract || reflectance(cos_theta, refraction_index) > random_my_decimal()) ?
-                    REFLECT(vec3_unit(ray_in->direction), hit_result->normal) :
-                    refract(vec3_unit(ray_in->direction), 
-                                vec3_unit(hit_result->normal), 
-                                refraction_index);
+            scatter_direction = (cannot_refract || reflectance(cos_theta, refraction_index) > random_my_decimal()) ?
+                REFLECT(vec3_unit(ray_in->direction), hit_result->normal) :
+                refract(vec3_unit(ray_in->direction), 
+                            vec3_unit(hit_result->normal), 
+                            refraction_index);
 
             *attenuation = color_new(1.0, 1.0, 1.0);
             break;
@@ -86,8 +84,6 @@ bool scatter(t_hit_result *hit_result,
         }
 
         *ray_scattered = ray_new(hit_result->p, scatter_direction);
-        // TODO Understand why
-        return true;
 }
 
 #endif
