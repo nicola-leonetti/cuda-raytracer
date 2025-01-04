@@ -8,7 +8,7 @@
 
 #define point3_new vec3_new
 
-void point3_print(const t_point3 v) {
+__host__ void point3_print(const t_point3 v) {
     fprintf(stderr, "Point(%f, %f, %f)\n", v.x, v.y, v.z);
 }
 

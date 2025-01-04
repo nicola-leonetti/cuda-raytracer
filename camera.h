@@ -36,7 +36,7 @@ typedef struct {
 } t_camera;
 
 // Constructor
-t_camera camera_new(my_decimal aspect_ratio, 
+__host__ t_camera camera_new(my_decimal aspect_ratio, 
                     int image_width, 
                     my_decimal vertical_fov,
                     t_point3 look_from, 
@@ -82,18 +82,23 @@ t_camera camera_new(my_decimal aspect_ratio,
 }
 
 // Return a random ray with the end in a random point inside the (i, j) pixel.
-void get_random_ray(t_ray *r, t_camera *cam, int i, int j) {
+__device__ t_ray get_random_ray(
+    t_camera *cam, 
+    int i, 
+    int j, 
+    curandState *random_state
+) {
     // Offset from the center of the vector generated in the unit square
     // [-0.5, 0.5]x[-0.5, 0.5]
-    t_vec3 offset  = vec3_new(random_my_decimal() - 0.5, 
-                            random_my_decimal() - 0.5, 0.0);
+    t_vec3 offset  = vec3_new(d_random_my_decimal(random_state) - 0.5, 
+                            d_random_my_decimal(random_state) - 0.5, 0.0);
 
     // Use the offset to select a random point inside the (i, j) pixel
     t_point3 pixel_sample = cam->pixel00;
     pixel_sample = sum(pixel_sample, scale(cam->pixel_delta_u, i+offset.x));
     pixel_sample = sum(pixel_sample, scale(cam->pixel_delta_v, j+offset.y));
 
-    t_point3 p = random_in_unit_disk();
+    t_point3 p = random_in_unit_disk(random_state);
     t_point3 defocus_disk_sample = cam->center;
     defocus_disk_sample = \
         sum(defocus_disk_sample, scale(cam->defocus_disk_u, p.x));
@@ -103,86 +108,184 @@ void get_random_ray(t_ray *r, t_camera *cam, int i, int j) {
                             cam->center : defocus_disk_sample;
     t_vec3 ray_direction = subtract(pixel_sample, ray_origin);
 
-    *r = ray_new(ray_origin, ray_direction);
+    return ray_new(ray_origin, ray_direction);
 }
 
 // Determining a different color for each of the pixels of the viewport by 
 // sending one or more rays from the camera center to each pixel 
-void ray_color(t_color *color, t_ray *r, t_sphere world[], 
-    int number_of_spheres, int *bounces) { 
-    bool hit_anything = false;
+__device__ t_color ray_color(
+    t_ray *r,
+    t_sphere world[], 
+    int number_of_spheres, 
+    int max_bounces, 
+    curandState *random_state
+) {
+    
+    t_color accumulated_color = COLOR_WHITE;
+    t_ray current_ray = *r;
+    int bounces_remaining = max_bounces;
 
-    // Limit the amount of recursive calls
-    if (*bounces == 0) {
-        *color = COLOR_BLACK;
-        return;
-    }
+    while (bounces_remaining > 0) {
+        bool hit_anything = false;
+    //     t_hit_result temp, closest_hit_result;
+    //     my_decimal closest_hit = RAY_T_MAX;
 
-    t_hit_result temp, result;
-    my_decimal closest_hit = RAY_T_MAX;
+    //     // Check the first intersection with the spheres
+    //     // (0.001 lower bound is used to fix "shadow acne")
+    //     for (int i = 0; i < number_of_spheres; i++) {
+    //         sphere_hit(&temp, &current_ray, world[i], 0.001, closest_hit);
+    //         if (temp.did_hit) {
+    //             hit_anything = true;
+    //             closest_hit = temp.t;
+    //             closest_hit_result = temp;
+    //         }
+    //     }
 
-    // For each sphere, if the ray hits the sphere before all the other spheres
-    // (0.001 lower bound is used to fix "shadow acne")
-    for (int i = 0; i < number_of_spheres; i++) {
-        sphere_hit(&temp, r, world[i], 0.001, closest_hit);
-        if (temp.did_hit) {
-            hit_anything = true;
-            closest_hit = temp.t;
-            result = temp;
+    //     // If no object is hit, return a blend between blue and white based on the 
+    //     // y coordinate, so going vertically from white all the way to blue
+        if (!hit_anything) {
+            float unit_direction_y = vec3_unit(current_ray.direction).y;
+            return blend(abs(unit_direction_y), COLOR_WHITE, COLOR_SKY);
         } 
+
+    //     t_vec3 scatter_direction;
+    //     my_decimal cos_theta, sin_theta, ri, reflectance;
+    //     bool cannot_refract, til;
+    //     switch (closest_hit_result.surface_material) {
+            
+    //     case LAMBERTIAN:
+    //         scatter_direction = sum(
+    //             closest_hit_result.normal, 
+    //             d_vec3_random_unit(random_state)
+    //         );
+    //         if (NEAR_ZERO(scatter_direction)) {
+    //             scatter_direction = closest_hit_result.normal;
+    //         }
+    //         accumulated_color = mul(
+    //             accumulated_color,
+    //             closest_hit_result.albedo
+    //         );
+    //         break;
+        
+    //     case METAL:
+    //         scatter_direction = reflect(
+    //             r->direction, 
+    //             closest_hit_result.normal
+    //         );
+    //         scatter_direction = sum(
+    //             scatter_direction, 
+    //             scale(
+    //                 d_vec3_random_unit(random_state), 
+    //                 closest_hit_result.fuzz)
+    //             );
+    //         accumulated_color = mul(
+    //             accumulated_color, 
+    //             closest_hit_result.albedo
+    //         );
+    //         break;
+
+    //     case DIELECTRIC:
+    //         ri = closest_hit_result.front_face ? 
+    //                 1.0/(closest_hit_result.refraction_index):
+    //                 closest_hit_result.refraction_index;
+    //         cos_theta = fmin(
+    //             dot(
+    //                 negate(vec3_unit(r->direction)), 
+    //                 closest_hit_result.normal
+    //             ), 
+    //             1.0
+    //         );
+    //         sin_theta = sqrt(1.0 - cos_theta*cos_theta);
+    
+    //         // // Cannot refract, so it reflects (total internal reflection)
+    //         // // Reflectivity varying based on the angle is given by Shlick's 
+    //         // // Approximation
+    //         cannot_refract = ((ri*sin_theta) > 1.0);
+    //         reflectance = get_reflectance(cos_theta, ri);
+    //         til = reflectance > d_random_my_decimal(random_state);
+
+    //         if (cannot_refract || til) {
+    //             scatter_direction = reflect(
+    //                 vec3_unit(r->direction), 
+    //                 closest_hit_result.normal
+    //             );
+    //         }
+    //         else {
+    //             scatter_direction = refract(
+    //                 vec3_unit(r->direction), 
+    //                 vec3_unit(closest_hit_result.normal), 
+    //                 ri
+    //             );
+    //         }
+    //         break;
+
+    //     default:
+    //         // TODO Trovare un modo per fare error handling senza scrivere su 
+    //         // stdout
+    //         printf("ERROR while scattered: material %d not yet implemented", 
+    //             closest_hit_result.surface_material );  
+    //         break;
+    //     }
+
+    //     current_ray = ray_new(closest_hit_result.p, scatter_direction);
+        bounces_remaining--;
     }
 
-    if (hit_anything) {
-        // Calculate color and attenuation of the scatered ray
-        t_color attenuation;
-        t_ray scattered_ray;
-        scatter(&result, r, &attenuation, &scattered_ray);
-
-        t_color scattered_ray_color;
-        int next_bounces = (*bounces)-1;
-        ray_color(&scattered_ray_color, &scattered_ray, world, 
-                        number_of_spheres, &next_bounces);
-        *color = mul(attenuation, scattered_ray_color);
-        return;
-    }
-
-    // If no object is hit, return a blend between blue and white based on the 
-    // y coordinate, so going vertically from white all the way to blue
-    *color = BLEND(vec3_unit(r->direction).y, COLOR_WHITE, COLOR_SKY);
+    // Limit the amount of bounces
+    return accumulated_color;
 }
 
-void camera_render(t_camera *cam, t_sphere world[], int number_of_spheres, 
-    unsigned char *result_img) {
 
-    // Render cycle
+__global__ void camera_render(
+    t_camera *cam, 
+    t_sphere world[],
+    int number_of_spheres, 
+    unsigned char *result_img,
+    curandState random_states[]
+) {
+
     int max_ray_bounces = MAX_RAY_BOUNCES;
-    for (int j = 0; j < cam->image_height; j++) {
-        for (int i = 0; i < cam->image_width; i++) {
-            long rgb_offset = (j*(cam->image_width) + i)*3;
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
+    int j = blockIdx.y*blockDim.y + threadIdx.y;
 
-            t_color pixel_color = color_new(0, 0, 0);
+    if ((i < (cam->image_width)) && (j < (cam->image_height))) {
 
-            // Antialiasing: sample SAMPLE_PER_PIXEL colors and average them to
-            // obtain pixel color
-            for (int sample = 0; sample < SAMPLES_PER_PIXEL; sample++) {
-                t_ray random_ray;
-                get_random_ray(&random_ray, cam, i, j);
-                t_color sampled_color;
-                ray_color(&sampled_color, &random_ray, world, 
-                    number_of_spheres, &max_ray_bounces);
-                pixel_color = sum(pixel_color, sampled_color);
-            } 
-            pixel_color = divide(pixel_color, SAMPLES_PER_PIXEL);
+        long long rgb_offset = (j*(cam->image_width) + i)*3;
+        curandState state = random_states[j*(cam->image_width) + i];
 
-            color_write_at(pixel_color, rgb_offset, result_img);
-        }
-        // Update progress counter
-        fprintf(stderr, 
-            "\rScanlines processed: %d/%d", j + 1, cam->image_height);
-        fflush(stderr);
+        // Antialiasing: sample SAMPLE_PER_PIXEL colors and average them to
+        // obtain pixel color
+        t_color pixel_color = color_new(0, 0, 0);
+        for (int sample = 0; sample < SAMPLES_PER_PIXEL; sample++) {
+            t_ray random_ray = get_random_ray(cam, i, j, &state);
+            t_color sampled_color = ray_color(
+                &random_ray, 
+                world, 
+                number_of_spheres, 
+                max_ray_bounces, 
+                &state
+            );
+            pixel_color = sum(pixel_color, sampled_color);
+        } 
+        pixel_color = divide(pixel_color, SAMPLES_PER_PIXEL);
+        
+        // // Clamp color RGB components to interval [0, 0.999]
+        pixel_color.x = (pixel_color.x > 0.999) ? 0.999 : pixel_color.x;
+        pixel_color.y = (pixel_color.y > 0.999) ? 0.999 : pixel_color.y;
+        pixel_color.z = (pixel_color.z > 0.999) ? 0.999 : pixel_color.z;
+        pixel_color.x = (pixel_color.x < 0) ? 0 : pixel_color.x;
+        pixel_color.y = (pixel_color.y < 0) ? 0 : pixel_color.y;
+        pixel_color.z = (pixel_color.z < 0) ? 0 : pixel_color.z;
+
+        // sqrt performs gamma correction
+        result_img[rgb_offset] = \
+            (unsigned char) (255.999 * sqrt(pixel_color.x));
+        result_img[rgb_offset+1] = \
+            (unsigned char) (255.999 * sqrt(pixel_color.y));
+        result_img[rgb_offset+2] = \
+            (unsigned char) (255.999 * sqrt(pixel_color.z));
     }
-
-    fprintf(stderr, "\rDone.                                    \n");
+    // TODO Add progress bar
 }
 
 #endif

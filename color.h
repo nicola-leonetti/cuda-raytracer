@@ -20,37 +20,19 @@
 #define COLOR_SKY    (t_color)   {0.5, 0.7, 1.0}
 
 // Return a blend (lerp) going  from  color1 and color2 based on blend factor a
-#define BLEND(a, color1, color2) \
-        sum(scale(color1, (0.5 * (1.0 - a))), \
-        scale(color2, (0.5 * (1.0 + a))))
-
-#define TO_GAMMA(a) \
-        (a > 0) ? sqrt(a) : a
+__device__ inline t_color blend(float a, t_color color1, t_color color2) {
+    return sum(
+        scale(color1, (0.5 * (1.0 - a))), 
+        scale(color2, (0.5 * (1.0 + a)))
+    );
+}
 
 // Prints color to stderr in readable format
-void color_print(t_color c) {
+__host__ void color_print(t_color c) {
     fprintf(stderr, "%d %d %d\n", 
             (int) (255.999 * c.x), 
             (int) (255.999 * c.y), 
             (int) (255.999 * c.z));
-}
-
-void color_write_at(t_color c, long offset, unsigned char *addr) {
-    // Clamp color RGB components to interval [0, 0.999]
-    c.x = (c.x > 0.999) ? 0.999 : c.x;
-    c.y = (c.y > 0.999) ? 0.999 : c.y;
-    c.z = (c.z > 0.999) ? 0.999 : c.z;
-    c.x = (c.x < 0) ? 0 : c.x;
-    c.y = (c.y < 0) ? 0 : c.y;
-    c.z = (c.z < 0) ? 0 : c.z;
-     
-    float r = TO_GAMMA(c.x);
-    float g = TO_GAMMA(c.y);
-    float b = TO_GAMMA(c.z);
-
-    addr[offset] = (unsigned int) (255.999 * r);
-    addr[offset+1] = (unsigned int) (255.999 * g);
-    addr[offset+2] = (unsigned int) (255.999 * b);
 }
 
 #endif 
